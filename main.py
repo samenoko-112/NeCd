@@ -227,8 +227,8 @@ def main(page:Page):
     
     def select_cookiefile(e: FilePickerResultEvent):
         nonlocal cookie_filepath
-        if e.path:
-            cookie_filepath = os.path.normpath(e.path)
+        if e.files:
+            cookie_filepath = os.path.normpath(e.files[0].path)
         cookiefilepathfield.value = cookie_filepath if cookie_filepath else ""
         cookiefilepathfield.update()
 
