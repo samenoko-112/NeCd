@@ -13,6 +13,8 @@ def main(page:Page):
     page.window.min_height = 700
     page.window.height = 800
     page.window.center()
+    root_dir = os.path.dirname(os.path.abspath(__file__))
+    page.window.icon = root_dir + "/icon.ico"
 
     # いろいろな変数
     outputpath = os.path.normpath(os.path.join(os.path.expanduser("~"),"yt-dlp")) + os.path.sep

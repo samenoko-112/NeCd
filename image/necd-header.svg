@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300">
+  <!-- 背景 -->
+  <rect width="1200" height="300" fill="#2C3E50" />
+  
+  <!-- 背景のグラデーションエフェクト -->
+  <rect width="1200" height="300" fill="url(#gradient)" />
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2C3E50" stop-opacity="1" />
+      <stop offset="100%" stop-color="#1A252F" stop-opacity="1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- デザイン要素 - 波線 -->
+  <path d="M0,180 C200,140 400,220 600,180 C800,140 1000,220 1200,180" 
+        stroke="#3498DB" stroke-width="4" fill="none" opacity="0.5" />
+  <path d="M0,200 C200,160 400,240 600,200 C800,160 1000,240 1200,200" 
+        stroke="#E74C3C" stroke-width="4" fill="none" opacity="0.5" />
+  
+  <!-- アプリ名 -->
+  <text x="120" y="165" font-family="Arial, sans-serif" font-weight="bold" font-size="80" fill="#ECF0F1">NeCd</text>
+  
+  <!-- タグライン -->
+  <text x="125" y="210" font-family="Arial, sans-serif" font-style="italic" font-size="30" fill="#BDC3C7">yt-dlp GUI Application</text>
+  
+  <!-- アイコン要素 -->
+  <g transform="translate(900, 150) scale(0.5)">
+    <!-- ダウンロードアイコン -->
+    <path d="M0 -60 L0 60" stroke="#E74C3C" stroke-width="24" stroke-linecap="round" />
+    <path d="M-60 0 L0 60 L60 0" stroke="#E74C3C" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+    <!-- 装飾的な円 -->
+    <circle cx="0" cy="0" r="100" fill="none" stroke="#ECF0F1" stroke-width="4" />
+    <circle cx="0" cy="0" r="30" fill="#3498DB" />
+  </g>
+  
+  <!-- 装飾的なドット -->
+  <circle cx="600" cy="250" r="8" fill="#3498DB" />
+  <circle cx="620" cy="250" r="8" fill="#E74C3C" />
+  <circle cx="640" cy="250" r="8" fill="#ECF0F1" />
+</svg>
