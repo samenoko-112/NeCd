@@ -1,7 +1,6 @@
 from flet import *
 import os
 import pyperclip
-import threading
 import subprocess
 
 def main(page:Page):
