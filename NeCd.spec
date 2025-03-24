@@ -21,7 +21,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='MAKANA',
+    name='NeCd',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -32,7 +32,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    version='C:\\Users\\mimi\\AppData\\Local\\Temp\\4b43f238-302e-4163-9165-28e7d1257ba9',
+    version='C:\\Users\\mimi\\AppData\\Local\\Temp\\6fdb2f94-5fe2-4326-939f-f30b47240640',
     icon=['icon.ico'],
 )
 coll = COLLECT(
@@ -42,5 +42,5 @@ coll = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='MAKANA',
+    name='NeCd',
 )
