@@ -11,3 +11,6 @@ wheels/
 
 # TestDir
 Downloads/
+
+# spec
+*.spec
