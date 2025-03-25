@@ -47,13 +47,19 @@ def main(page:Page):
         if extdropdown.value == "mp4" or extdropdown.value == "mkv":
             qualitydropdown.options = video_quality
             qualitydropdown.value = video_quality[0].key
+            is_chapter.disabled = False
         elif extdropdown.value == "mp3":
             qualitydropdown.options = mp3_quality
             qualitydropdown.value = mp3_quality[0].key
+            is_chapter.disabled = True
+            is_chapter.value = False
         else:
             qualitydropdown.options = []
             qualitydropdown.value = ""
+            is_chapter.disabled = True
+            is_chapter.value = False
         qualitydropdown.update()
+        is_chapter.update()
     
     def check_multiconnect(e):
         if multiconnect.value == "":
@@ -148,6 +154,9 @@ def main(page:Page):
         else:
             command.extend(["-f","bestaudio","-x","--audio-format",extdropdown.value,"--audio-quality","0"])
 
+        if is_chapter.value:
+            command.extend(["--embed-chapters","--add-chapters"])
+        
         if multiconnect.value != "" and multiconnect.value != "0":
             command.extend(["-N", str(multiconnect.value)])
 
@@ -253,6 +262,7 @@ def main(page:Page):
     is_playlist = Checkbox(label="プレイリストモード", tooltip="プレイリストをダウンロードする際に使うと便利です")
     is_thumbnail = Checkbox(label="サムネイルを埋め込む", tooltip="サムネイルを埋め込みます", on_change=toggle_crop_thumbnail)
     is_cropthumbnail = Checkbox(label="サムネイルをクロッピング", tooltip="サムネイルを1:1にクロッピングします\n有効にするには\"サムネイルを埋め込む\"を有効にしてください", disabled=True)
+    is_chapter = Checkbox(label="チャプターを埋め込む",tooltip=f"動画にチャプターを埋め込みます\nデフォルトで詳細なメタデータを埋め込むため場合によってはデフォルトで埋め込まれる場合があります",disabled=True)
     runbtn = ElevatedButton(text="実行", icon=Icons.PLAY_ARROW, on_click=run_dlp, width=float("inf"))
     progressbar = ProgressBar(value=0,border_radius=border_radius.all(8))
 
@@ -266,6 +276,7 @@ def main(page:Page):
             cookies,
             Row([extdropdown, qualitydropdown]),
             multiconnect,
+            is_chapter,
             is_playlist,
             is_thumbnail,
             is_cropthumbnail,
