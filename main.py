@@ -262,7 +262,7 @@ def main(page:Page):
     is_playlist = Checkbox(label="プレイリストモード", tooltip="プレイリストをダウンロードする際に使うと便利です")
     is_thumbnail = Checkbox(label="サムネイルを埋め込む", tooltip="サムネイルを埋め込みます", on_change=toggle_crop_thumbnail)
     is_cropthumbnail = Checkbox(label="サムネイルをクロッピング", tooltip="サムネイルを1:1にクロッピングします\n有効にするには\"サムネイルを埋め込む\"を有効にしてください", disabled=True)
-    is_chapter = Checkbox(label="チャプターを埋め込む",tooltip=f"動画にチャプターを埋め込みます\nデフォルトで詳細なメタデータを埋め込むため場合によってはデフォルトで埋め込まれる場合があります",disabled=True)
+    is_chapter = Checkbox(label="チャプターを埋め込む",tooltip=f"動画にチャプターを埋め込みます\nデフォルトで詳細なメタデータを埋め込むため場合によってはデフォルトで埋め込まれる場合があります")
     runbtn = ElevatedButton(text="実行", icon=Icons.PLAY_ARROW, on_click=run_dlp, width=float("inf"))
     progressbar = ProgressBar(value=0,border_radius=border_radius.all(8))
 
