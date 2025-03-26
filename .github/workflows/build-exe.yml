@@ -2,6 +2,15 @@ name: Build Windows EXE
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'リリースバージョン (例: v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+      release_notes:
+        description: 'リリースノート'
+        required: false
+        default: '新機能と改善点'
 
 jobs:
   build:
@@ -34,10 +43,23 @@ jobs:
     
     - name: zip
       run: |
-        Compress-Archive -Path dist/NeCd/* -DestinationPath dist/NeCd.zip
+        Compress-Archive -Path dist/NeCd/* -DestinationPath dist/NeCd-${{ github.event.inputs.version }}.zip
         
     - name: Upload EXE
       uses: actions/upload-artifact@v4
       with:
         name: NeCd
-        path: dist/NeCd.zip
+        path: dist/NeCd-${{ github.event.inputs.version }}.zip
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.event.inputs.version }}
+        name: NeCd ${{ github.event.inputs.version }}
+        body: ${{ github.event.inputs.release_notes }}
+        draft: true
+        prerelease: false
+        files: |
+          dist/NeCd-${{ github.event.inputs.version }}.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
