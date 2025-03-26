@@ -75,6 +75,21 @@ pip install mutagen
 エラーではなく警告もstderrで出力されているため起こることです。  
 ログの一番最後に「✅ 正常に完了しました。」と出れば大丈夫です。
 
+### `nsig extracion failed` のエラーが起こる
+![](image/README-2025-3-26.webp)
+
+画像のようなエラーが起こる場合yt-dlpのバージョンが古い事が多いです。  
+```bash
+yt-dlp -U
+```
+で更新の有無を確認し
+```log
+Current version: stable@2025.03.21 from yt-dlp/yt-dlp
+Latest version: stable@2025.03.26 from yt-dlp/yt-dlp
+ERROR: You installed yt-dlp with pip or using the wheel from PyPi; Use that to update
+```
+のように出た場合は更新すると解消されます。
+
 ## スクショ
 ![](image/README-2025-3-25.webp)
 
