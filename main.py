@@ -1,10 +1,12 @@
+# ライブラリのインポート
 from flet import *
 import os
 import pyperclip
 import subprocess
 
+# メインウィンドウ
 def main(page:Page):
-    # WindowSetting
+    # ウィンドウの設定
     page.title = "NeCd"
     page.padding = 20
     page.window.min_width = 800
@@ -15,7 +17,7 @@ def main(page:Page):
     root_dir = os.path.dirname(os.path.abspath(__file__))
     page.window.icon = root_dir + "/icon.ico"
 
-    # いろいろな変数
+    # 変数初期化
     outputpath = os.path.normpath(os.path.join(os.path.expanduser("~"),"yt-dlp")) + os.path.sep
     cookie_filepath = None
     download_process = None
@@ -23,6 +25,7 @@ def main(page:Page):
     video_quality = [dropdown.Option(key="auto", text="自動"), dropdown.Option(key="2160", text="4K"), dropdown.Option(key="1440", text="2K"), dropdown.Option(key="1080", text="Full HD"), dropdown.Option(key="720", text="HD")]
     mp3_quality = [dropdown.Option(key="auto", text="自動"), dropdown.Option(key="320k", text="320kbps"), dropdown.Option(key="256k", text="256kbps"), dropdown.Option(key="192k", text="192kbps"), dropdown.Option(key="128k", text="128kbps")]
 
+    # ウィンドウを閉じるときの処理
     def on_window_close(e):
         if download_process:
             try:
@@ -35,6 +38,7 @@ def main(page:Page):
     
     # print(outputpath)
 
+    # Cookieの取得元を変更するとき
     def change_cookiefrom(e):
         if cookiefrom.value == "file":
             cookies.visible = True
@@ -43,6 +47,7 @@ def main(page:Page):
             cookies.visible = False
             cookies.update()
     
+    # 拡張子を変更するとき
     def change_ext(e):
         if extdropdown.value == "mp4" or extdropdown.value == "mkv":
             qualitydropdown.options = video_quality
@@ -61,6 +66,7 @@ def main(page:Page):
         qualitydropdown.update()
         is_chapter.update()
     
+    # 同時接続数のチェック
     def check_multiconnect(e):
         if multiconnect.value == "":
             pass
@@ -76,18 +82,23 @@ def main(page:Page):
                 multiconnect.value = "16"
                 multiconnect.update()
     
+    # サムネクロッピングチェックボックスのトグル
     def toggle_crop_thumbnail(e):
         is_cropthumbnail.disabled = not is_thumbnail.value
         if not is_thumbnail.value:
             is_cropthumbnail.value =False
         is_cropthumbnail.update()
     
+    # URLのペースト
     def paste_url(e):
         urlinput.value = pyperclip.paste()
         urlinput.update()
 
+    # ダウンロード処理
     def run_dlp(e):
         nonlocal download_process
+        
+        # 前処理
         log.controls.clear()
         log.controls.append(Text("⏳ 開始しています...", color=Colors.BLUE, weight=FontWeight.BOLD))
         log.update()
@@ -97,8 +108,8 @@ def main(page:Page):
         runbtn.update()
         progressbar.value = None
         progressbar.update()
-        
 
+        # URL未入力の場合エラーを返す
         if urlinput.value == "":
             log.controls.append(Text("❌ URLを入力してください",weight=FontWeight.BOLD,color=Colors.RED))
             log.update()
@@ -110,6 +121,7 @@ def main(page:Page):
             progressbar.update()
             return
         
+        # 最低限のコマンド
         command = [
             "yt-dlp",
             "--newline",
@@ -119,6 +131,7 @@ def main(page:Page):
             "--progress-template", "[DOWNLOADING]:%(progress._percent_str)s",
         ]
 
+        # Cookie
         if cookiefrom.value == "file":
             if cookie_filepath == None:
                 log.controls.extend([
@@ -133,6 +146,7 @@ def main(page:Page):
         else:
             pass
 
+        # 拡張子
         if extdropdown.value == "mp4":
             command.extend(["--merge-output-format","mp4"])
             if qualitydropdown.value != "auto":
@@ -154,22 +168,27 @@ def main(page:Page):
         else:
             command.extend(["-f","bestaudio","-x","--audio-format",extdropdown.value,"--audio-quality","0"])
 
+        # チャプター埋め込み
         if is_chapter.value:
             command.extend(["--embed-chapters","--add-chapters"])
         
+        # 同時接続
         if multiconnect.value != "" and multiconnect.value != "0":
             command.extend(["-N", str(multiconnect.value)])
 
+        # プレイリストモード
         if is_playlist.value:
             command.extend(["-o",outputpath + "%(playlist_title)s/%(playlist_index)03d_%(title)s.%(ext)s"])
         else:
             command.extend(["-o",outputpath + "%(title)s.%(ext)s"])
         
+        # サムネイル
         if is_thumbnail.value:
             command.extend(["--embed-thumbnail","--convert-thumbnails","jpg"])
             if is_cropthumbnail.value:
                 command.extend(["--ppa","ThumbnailsConvertor:-qmin 1 -q:v 1 -vf crop=\"'if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'\""])
         
+        # ダウンロード開始
         log.controls.extend([
             Text("📝 次のコマンドを実行します:",weight=FontWeight.BOLD),
             Text(" ".join(command),color=Colors.BLUE)
@@ -178,7 +197,7 @@ def main(page:Page):
         p = subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,bufsize=1,universal_newlines=True)
         download_process = p
 
-        # 標準出力の処理
+        # 出力のパース
         while True:
             output = p.stdout.readline()
             if output == "" and p.poll() is not None:
@@ -208,6 +227,7 @@ def main(page:Page):
                 log.scroll_to(offset=-1)
             log.update()
         
+        # 後処理
         if p.returncode == 0:
             log.controls.append(Text("✅ 正常に終了しました。",color=Colors.GREEN))
             log.scroll_to(offset=-1)
@@ -227,6 +247,7 @@ def main(page:Page):
         runbtn.update()
         download_process = None
 
+    # 保存先選択のファイルピッカーの用意
     def select_outputpath(e:FilePickerResultEvent):
         nonlocal outputpath
         outputpath = os.path.normpath(e.path if e.path else outputpath) + os.path.sep
@@ -234,19 +255,21 @@ def main(page:Page):
         outputpathfield.value = outputpath
         outputpathfield.update()
     
+    # Cookie選択のファイルピッカーの用意
     def select_cookiefile(e: FilePickerResultEvent):
         nonlocal cookie_filepath
         if e.files:
             cookie_filepath = os.path.normpath(e.files[0].path)
         cookiefilepathfield.value = cookie_filepath if cookie_filepath else ""
         cookiefilepathfield.update()
-
     
+    # ファイルピッカーの定義
     select_outputpath_dialog = FilePicker(on_result=select_outputpath)
     select_cookiefile_dialog = FilePicker(on_result=select_cookiefile)
     page.overlay.append(select_outputpath_dialog)
     page.overlay.append(select_cookiefile_dialog)
     
+    # UI要素の定義
     urlinput = TextField(label="URL", prefix_icon=Icons.LINK, hint_text="https://youtube.com/watch?v=...", expand=True)
     pastebtn = IconButton(icon=Icons.PASTE, on_click=paste_url,tooltip="クリップボードから貼り付け")
     outputpathfield = TextField(value=outputpath, label="保存先", expand=True, read_only=True,prefix_icon=Icons.FOLDER)
@@ -266,7 +289,7 @@ def main(page:Page):
     runbtn = ElevatedButton(text="実行", icon=Icons.PLAY_ARROW, on_click=run_dlp, width=float("inf"))
     progressbar = ProgressBar(value=0,border_radius=border_radius.all(8))
 
-    # 左パネル（コントロール類をまとめる）
+    # 左パネル(設定など)
     left_panel = Column(
         controls=[
             Row([Text(page.title, size=24, weight=FontWeight.BOLD),Text("Dev",color=Colors.BLACK45,size=12)]),
@@ -290,7 +313,7 @@ def main(page:Page):
         height=float("inf"),
     )
 
-    # 右パネル（ログを表示するエリア）
+    # 右パネル
     right_panel = Container(
         content=log,
         border=border.all(1),
@@ -300,7 +323,7 @@ def main(page:Page):
         height=float("inf")
     )
 
-    # 全体レイアウトを行としてページに追加
+    # 最終的なレイアウト
     page.add(
         Row(
             [
@@ -312,4 +335,5 @@ def main(page:Page):
         )
     )
 
+# アプリの実行
 app(target=main)
