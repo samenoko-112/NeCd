@@ -2,7 +2,11 @@
 from flet import *
 import os
 import pyperclip
+import logging
+import datetime
 import subprocess
+
+os.makedirs('./logs',exist_ok=True)
 
 # メインウィンドウ
 def main(page:Page):
@@ -188,6 +192,16 @@ def main(page:Page):
             if is_cropthumbnail.value:
                 command.extend(["--ppa","ThumbnailsConvertor:-qmin 1 -q:v 1 -vf crop=\"'if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'\""])
         
+        # ロギングの設定
+        timestamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
+        logfilename = os.path.join("./logs",f"{timestamp}.log")
+        logging.basicConfig(
+            filename=logfilename,
+            level=logging.INFO,
+            format="%(asctime)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        
         # ダウンロード開始
         log.controls.extend([
             Text("📝 次のコマンドを実行します:",weight=FontWeight.BOLD),
@@ -213,6 +227,7 @@ def main(page:Page):
                     log.update()
                     progressbar.value = None
                     progressbar.update()
+                    logging.info(output.strip())
 
         # エラー出力を収集
         errors = p.stderr.read()
@@ -223,6 +238,7 @@ def main(page:Page):
         if errors:
             log.controls.append(Text("❌ 発生したエラー:", weight=FontWeight.BOLD, color=Colors.RED))
             for error_line in errors.splitlines():
+                logging.error(error_line)
                 log.controls.append(Text(error_line, color=Colors.RED))
                 log.scroll_to(offset=-1)
             log.update()
