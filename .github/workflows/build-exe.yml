@@ -45,12 +45,6 @@ jobs:
       run: |
         Compress-Archive -Path dist/NeCd/* -DestinationPath dist/NeCd-${{ github.event.inputs.version }}.zip
         
-    - name: Upload EXE
-      uses: actions/upload-artifact@v4
-      with:
-        name: NeCd
-        path: dist/NeCd-${{ github.event.inputs.version }}.zip
-        
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
