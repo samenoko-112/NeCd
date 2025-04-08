@@ -133,6 +133,8 @@ def main(page:Page):
             "--embed-metadata","--add-metadata",
             "--default-search", "ytsearch",
             "--progress-template", "[DOWNLOADING]:%(progress._percent_str)s",
+            "--add-header", "Accept-Language:ja-JP",
+            "--extractor-args", "youtube:lang=ja"
         ]
 
         # Cookie
