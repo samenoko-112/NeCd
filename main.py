@@ -1,16 +1,24 @@
-# ライブラリのインポート
+# 必要なライブラリのインポート
 from flet import *
 import os
 import pyperclip
 import logging
 import datetime
 import subprocess
+import asyncio
+import threading
+from queue import Queue
 
-os.makedirs('./logs',exist_ok=True)
+# ログディレクトリの作成
+os.makedirs('./logs', exist_ok=True)
 
-# メインウィンドウ
-def main(page:Page):
-    # ウィンドウの設定
+def main(page: Page):
+    """
+    メインウィンドウの設定と初期化
+    Args:
+        page (Page): Fletのページオブジェクト
+    """
+    # ウィンドウの基本設定
     page.title = "NeCd"
     page.padding = 20
     page.window.min_width = 800
@@ -21,16 +29,39 @@ def main(page:Page):
     root_dir = os.path.dirname(os.path.abspath(__file__))
     page.window.icon = root_dir + "/icon.ico"
 
-    # 変数初期化
-    outputpath = os.path.normpath(os.path.join(os.path.expanduser("~"),"yt-dlp")) + os.path.sep
-    cookie_filepath = None
+    # グローバル変数の初期化
+    download_directory = os.path.normpath(os.path.join(os.path.expanduser("~"), "yt-dlp")) + os.path.sep
+    cookie_file_path = None
     download_process = None
-    exts = [dropdown.Option(key="mp4",text="mp4"),dropdown.Option(key="mp3",text="mp3"),dropdown.Option(key="mkv",text="mkv"),dropdown.Option(key="opus",text="opus"),dropdown.Option(key="flac",text="flac"),]
-    video_quality = [dropdown.Option(key="auto", text="自動"), dropdown.Option(key="2160", text="4K"), dropdown.Option(key="1440", text="2K"), dropdown.Option(key="1080", text="Full HD"), dropdown.Option(key="720", text="HD")]
-    mp3_quality = [dropdown.Option(key="auto", text="自動"), dropdown.Option(key="320k", text="320kbps"), dropdown.Option(key="256k", text="256kbps"), dropdown.Option(key="192k", text="192kbps"), dropdown.Option(key="128k", text="128kbps")]
 
-    # ウィンドウを閉じるときの処理
-    def on_window_close(e):
+    # ドロップダウンの選択肢設定
+    file_format_options = [
+        dropdown.Option(key="mp4", text="mp4"),
+        dropdown.Option(key="mp3", text="mp3"),
+        dropdown.Option(key="mkv", text="mkv"),
+        dropdown.Option(key="opus", text="opus"),
+        dropdown.Option(key="flac", text="flac"),
+    ]
+    video_quality_options = [
+        dropdown.Option(key="auto", text="自動"),
+        dropdown.Option(key="2160", text="4K"),
+        dropdown.Option(key="1440", text="2K"),
+        dropdown.Option(key="1080", text="Full HD"),
+        dropdown.Option(key="720", text="HD")
+    ]
+    audio_quality_options = [
+        dropdown.Option(key="auto", text="自動"),
+        dropdown.Option(key="320k", text="320kbps"),
+        dropdown.Option(key="256k", text="256kbps"),
+        dropdown.Option(key="192k", text="192kbps"),
+        dropdown.Option(key="128k", text="128kbps")
+    ]
+
+    def handle_window_close(e):
+        """
+        ウィンドウを閉じる際の処理
+        実行中のダウンロードプロセスを終了し、ウィンドウを閉じる
+        """
         if download_process:
             try:
                 download_process.terminate()
@@ -38,291 +69,347 @@ def main(page:Page):
                 pass
         page.window.destroy()
     
-    page.on_close = on_window_close
-    
-    # print(outputpath)
+    page.on_close = handle_window_close
 
-    # Cookieの取得元を変更するとき
-    def change_cookiefrom(e):
-        if cookiefrom.value == "file":
-            cookies.visible = True
-            cookies.update()
+    def handle_cookie_source_change(e):
+        """
+        Cookieの取得元を変更した際の処理
+        Args:
+            e: イベントオブジェクト
+        """
+        if cookie_source_dropdown.value == "file":
+            cookie_file_row.visible = True
+            cookie_file_row.update()
         else:
-            cookies.visible = False
-            cookies.update()
+            cookie_file_row.visible = False
+            cookie_file_row.update()
     
-    # 拡張子を変更するとき
-    def change_ext(e):
-        if extdropdown.value == "mp4" or extdropdown.value == "mkv":
-            qualitydropdown.options = video_quality
-            qualitydropdown.value = video_quality[0].key
-            is_chapter.disabled = False
-        elif extdropdown.value == "mp3":
-            qualitydropdown.options = mp3_quality
-            qualitydropdown.value = mp3_quality[0].key
-            is_chapter.disabled = True
-            is_chapter.value = False
+    def handle_format_change(e):
+        """
+        拡張子を変更した際の処理
+        選択された拡張子に応じて品質設定とチャプター設定を更新
+        Args:
+            e: イベントオブジェクト
+        """
+        if format_dropdown.value == "mp4" or format_dropdown.value == "mkv":
+            quality_dropdown.options = video_quality_options
+            quality_dropdown.value = video_quality_options[0].key
+            chapter_checkbox.disabled = False
+        elif format_dropdown.value == "mp3":
+            quality_dropdown.options = audio_quality_options
+            quality_dropdown.value = audio_quality_options[0].key
+            chapter_checkbox.disabled = True
+            chapter_checkbox.value = False
         else:
-            qualitydropdown.options = []
-            qualitydropdown.value = ""
-            is_chapter.disabled = True
-            is_chapter.value = False
-        qualitydropdown.update()
-        is_chapter.update()
+            quality_dropdown.options = []
+            quality_dropdown.value = ""
+            chapter_checkbox.disabled = True
+            chapter_checkbox.value = False
+        quality_dropdown.update()
+        chapter_checkbox.update()
     
-    # 同時接続数のチェック
-    def check_multiconnect(e):
-        if multiconnect.value == "":
+    def validate_concurrent_connections(e):
+        """
+        同時接続数の入力値を検証
+        0～16の範囲内の数値のみ許可
+        Args:
+            e: イベントオブジェクト
+        """
+        if concurrent_connections_input.value == "":
             pass
         else:
-            # 数値かどうかチェック
-            if multiconnect.value.isnumeric():
-                # 0～16の範囲内かチェック
-                if int(multiconnect.value) < 0 or int(multiconnect.value) > 16:
-                    multiconnect.value = "16"
-                    multiconnect.update()
+            if concurrent_connections_input.value.isnumeric():
+                if int(concurrent_connections_input.value) < 0 or int(concurrent_connections_input.value) > 16:
+                    concurrent_connections_input.value = "16"
+                    concurrent_connections_input.update()
             else:
-                # 数値でない場合は16にリセット
-                multiconnect.value = "16"
-                multiconnect.update()
+                concurrent_connections_input.value = "16"
+                concurrent_connections_input.update()
     
-    # サムネクロッピングチェックボックスのトグル
-    def toggle_crop_thumbnail(e):
-        is_cropthumbnail.disabled = not is_thumbnail.value
-        if not is_thumbnail.value:
-            is_cropthumbnail.value =False
-        is_cropthumbnail.update()
+    def handle_thumbnail_crop_toggle(e):
+        """
+        サムネイルクロッピングの有効/無効を切り替え
+        サムネイル埋め込みが無効の場合はクロッピングも無効化
+        Args:
+            e: イベントオブジェクト
+        """
+        thumbnail_crop_checkbox.disabled = not thumbnail_checkbox.value
+        if not thumbnail_checkbox.value:
+            thumbnail_crop_checkbox.value = False
+        thumbnail_crop_checkbox.update()
     
-    # URLのペースト
-    def paste_url(e):
-        urlinput.value = pyperclip.paste()
-        urlinput.update()
+    def handle_url_paste(e):
+        """
+        クリップボードからURLを貼り付け
+        Args:
+            e: イベントオブジェクト
+        """
+        url_input.value = pyperclip.paste()
+        url_input.update()
 
-    # ダウンロード処理
-    def run_dlp(e):
+    async def execute_download(e):
+        """
+        動画ダウンロードの実行
+        非同期でダウンロードを実行し、進捗状況を表示
+        Args:
+            e: イベントオブジェクト
+        """
         nonlocal download_process
         
-        # 前処理
-        log.controls.clear()
-        log.controls.append(Text("⏳ 開始しています...", color=Colors.BLUE, weight=FontWeight.BOLD))
-        log.update()
-        runbtn.disabled = True
-        runbtn.text = "実行中"
-        runbtn.icon = Icons.CACHED
-        runbtn.update()
-        progressbar.value = None
-        progressbar.update()
+        # UIの初期状態設定
+        log_output.controls.clear()
+        log_output.controls.append(Text("⏳ 開始しています...", color=Colors.BLUE, weight=FontWeight.BOLD))
+        log_output.update()
+        download_button.disabled = True
+        download_button.text = "実行中"
+        download_button.icon = Icons.CACHED
+        download_button.update()
+        progress_bar.value = None
+        progress_bar.update()
 
-        # URL未入力の場合エラーを返す
-        if urlinput.value == "":
-            log.controls.append(Text("❌ URLを入力してください",weight=FontWeight.BOLD,color=Colors.RED))
-            log.update()
-            runbtn.disabled = False
-            runbtn.text = "実行"
-            runbtn.icon = Icons.PLAY_ARROW
-            runbtn.update()
-            progressbar.value = 0
-            progressbar.update()
+        # URL入力チェック
+        if url_input.value == "":
+            log_output.controls.append(Text("❌ URLを入力してください", weight=FontWeight.BOLD, color=Colors.RED))
+            log_output.update()
+            download_button.disabled = False
+            download_button.text = "実行"
+            download_button.icon = Icons.PLAY_ARROW
+            download_button.update()
+            progress_bar.value = 0
+            progress_bar.update()
             return
         
-        # 最低限のコマンド
+        # yt-dlpコマンドの基本設定
         command = [
             "yt-dlp",
             "--newline",
-            f"{urlinput.value}",
-            "--embed-metadata","--add-metadata",
+            f"{url_input.value}",
+            "--embed-metadata", "--add-metadata",
             "--default-search", "ytsearch",
             "--progress-template", "[DOWNLOADING]:%(progress._percent_str)s",
             "--add-header", "Accept-Language:ja-JP",
-            "--extractor-args", "youtube:lang=ja"
+            "--extractor-args", "youtube:lang=ja",
+            "--no-warnings"
         ]
 
-        # Cookie
-        if cookiefrom.value == "file":
-            if cookie_filepath == None:
-                log.controls.extend([
-                    Text("❌ Cookieファイルが選択されていません",weight=FontWeight.BOLD,color=Colors.RED),
-                    Text("Cookieを使用せずダウンロードします",color=Colors.RED)
+        # Cookie設定の追加
+        if cookie_source_dropdown.value == "file":
+            if cookie_file_path == None:
+                log_output.controls.extend([
+                    Text("❌ Cookieファイルが選択されていません", weight=FontWeight.BOLD, color=Colors.RED),
+                    Text("Cookieを使用せずダウンロードします", color=Colors.RED)
                 ])
-                log.update()
+                log_output.update()
             else:
-                command.extend(["--cookies",cookie_filepath])
-        elif cookiefrom.value == "firefox":
-            command.extend(["--cookies-from-browser","firefox"])
-        else:
-            pass
+                command.extend(["--cookies", cookie_file_path])
+        elif cookie_source_dropdown.value == "firefox":
+            command.extend(["--cookies-from-browser", "firefox"])
 
-        # 拡張子
-        if extdropdown.value == "mp4":
-            command.extend(["--merge-output-format","mp4"])
-            if qualitydropdown.value != "auto":
-                command.extend(["-f",f"bestvideo[height<={qualitydropdown.value}]+bestaudio[ext=m4a]/best[height<={qualitydropdown.value}]"])
+        # 出力形式と品質設定
+        if format_dropdown.value == "mp4":
+            command.extend(["--merge-output-format", "mp4"])
+            if quality_dropdown.value != "auto":
+                command.extend(["-f", f"bestvideo[height<={quality_dropdown.value}]+bestaudio[ext=m4a]/best[height<={quality_dropdown.value}]"])
             else:
-                command.extend(["-f","bestvideo+bestaudio[ext=m4a]/best"])
-        elif extdropdown.value == "mkv":
-            command.extend(["--merge-output-format","mkv"])
-            if qualitydropdown.value != "auto":
-                command.extend(["-f",f"bestvideo[height<={qualitydropdown.value}]+bestaudio[ext=m4a]/best[height<={qualitydropdown.value}]"])
+                command.extend(["-f", "bestvideo+bestaudio[ext=m4a]/best"])
+        elif format_dropdown.value == "mkv":
+            command.extend(["--merge-output-format", "mkv"])
+            if quality_dropdown.value != "auto":
+                command.extend(["-f", f"bestvideo[height<={quality_dropdown.value}]+bestaudio[ext=m4a]/best[height<={quality_dropdown.value}]"])
             else:
-                command.extend(["-f","bestvideo+bestaudio[ext=m4a]/best"])
-        elif extdropdown.value == "mp3":
-            command.extend(["-f","bestaudio","-x","--audio-format","mp3"])
-            if qualitydropdown.value != "auto":
-                command.extend(["--audio-quality",qualitydropdown.value])
+                command.extend(["-f", "bestvideo+bestaudio[ext=m4a]/best"])
+        elif format_dropdown.value == "mp3":
+            command.extend(["-f", "bestaudio", "-x", "--audio-format", "mp3"])
+            if quality_dropdown.value != "auto":
+                command.extend(["--audio-quality", quality_dropdown.value])
             else:
-                command.extend(["--audio-quality","0"])
+                command.extend(["--audio-quality", "0"])
         else:
-            command.extend(["-f","bestaudio","-x","--audio-format",extdropdown.value,"--audio-quality","0"])
+            command.extend(["-f", "bestaudio", "-x", "--audio-format", format_dropdown.value, "--audio-quality", "0"])
 
-        # チャプター埋め込み
-        if is_chapter.value:
-            command.extend(["--embed-chapters","--add-chapters"])
+        # 追加オプションの設定
+        if chapter_checkbox.value:
+            command.extend(["--embed-chapters", "--add-chapters"])
         
-        # 同時接続
-        if multiconnect.value != "" and multiconnect.value != "0":
-            command.extend(["-N", str(multiconnect.value)])
+        if concurrent_connections_input.value != "" and concurrent_connections_input.value != "0":
+            command.extend(["-N", str(concurrent_connections_input.value)])
 
-        # プレイリストモード
-        if is_playlist.value:
-            command.extend(["-o",outputpath + "%(playlist_title)s/%(playlist_index)03d_%(title)s.%(ext)s"])
+        # 出力パスの設定
+        if playlist_checkbox.value:
+            command.extend(["-o", download_directory + "%(playlist_title)s/%(playlist_index)03d_%(title)s.%(ext)s"])
         else:
-            command.extend(["-o",outputpath + "%(title)s.%(ext)s"])
+            command.extend(["-o", download_directory + "%(title)s.%(ext)s"])
         
-        # サムネイル
-        if is_thumbnail.value:
-            command.extend(["--embed-thumbnail","--convert-thumbnails","jpg"])
-            if is_cropthumbnail.value:
-                command.extend(["--ppa","ThumbnailsConvertor:-qmin 1 -q:v 1 -vf crop=\"'if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'\""])
+        # サムネイル設定
+        if thumbnail_checkbox.value:
+            command.extend(["--embed-thumbnail", "--convert-thumbnails", "jpg"])
+            if thumbnail_crop_checkbox.value:
+                command.extend(["--ppa", "ThumbnailsConvertor:-qmin 1 -q:v 1 -vf crop=\"'if(gt(ih,iw),iw,ih)':'if(gt(iw,ih),ih,iw)'\""])
         
-        # ロギングの設定
+        # ログ設定
         timestamp = datetime.datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
-        logfilename = os.path.join("./logs",f"{timestamp}.log")
+        log_filename = os.path.join("./logs", f"{timestamp}.log")
         logging.basicConfig(
-            filename=logfilename,
+            filename=log_filename,
             level=logging.INFO,
             format="%(asctime)s - %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
         )
         
-        # ダウンロード開始
-        log.controls.extend([
-            Text("📝 次のコマンドを実行します:",weight=FontWeight.BOLD),
-            Text(" ".join(command),color=Colors.BLUE)
+        # コマンド実行の開始
+        log_output.controls.extend([
+            Text("📝 次のコマンドを実行します:", weight=FontWeight.BOLD),
+            Text(" ".join(command), color=Colors.BLUE)
         ])
-        log.update()
-        p = subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,bufsize=1,universal_newlines=True)
-        download_process = p
+        log_output.update()
 
-        # 出力のパース
-        while True:
-            output = p.stdout.readline()
-            if output == "" and p.poll() is not None:
-                break
-            if output:
+        # 出力キューとエラーキューの初期化
+        output_queue = Queue()
+        error_queue = Queue()
+
+        def process_download_output():
+            """
+            ダウンロードプロセスの実行と出力の収集
+            Returns:
+                int: プロセスの終了コード
+            """
+            p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, universal_newlines=True)
+            download_process = p
+
+            while True:
+                output = p.stdout.readline()
+                if output == "" and p.poll() is not None:
+                    break
+                if output:
+                    output_queue.put(output)
+
+            errors = p.stderr.read()
+            if errors:
+                error_queue.put(errors)
+            
+            return p.returncode
+
+        # 出力処理スレッドの開始
+        output_thread = threading.Thread(target=process_download_output)
+        output_thread.start()
+
+        # 出力の処理と表示
+        while output_thread.is_alive() or not output_queue.empty():
+            try:
+                output = output_queue.get_nowait()
                 if "[DOWNLOADING]" in output:
                     progress = output.split(":")[1].strip()
-                    progressbar.value = float(progress.strip("%")) / 100
-                    progressbar.update()
+                    progress_bar.value = float(progress.strip("%")) / 100
+                    progress_bar.update()
                 else:
-                    log.controls.append(Text(output.strip()))
-                    log.scroll_to(offset=-1)
-                    log.update()
-                    progressbar.value = None
-                    progressbar.update()
+                    log_output.controls.append(Text(output.strip()))
+                    log_output.scroll_to(offset=-1)
+                    log_output.update()
+                    progress_bar.value = None
+                    progress_bar.update()
                     logging.info(output.strip())
+            except:
+                await asyncio.sleep(0.1)
 
-        # エラー出力を収集
-        errors = p.stderr.read()
+        # エラー出力の収集と表示
+        errors = ""
+        while not error_queue.empty():
+            errors += error_queue.get()
         
-        p.wait()
-        
-        # エラーがあれば表示
         if errors:
-            log.controls.append(Text("❌ 発生したエラー:", weight=FontWeight.BOLD, color=Colors.RED))
+            log_output.controls.append(Text("❌ 発生したエラー:", weight=FontWeight.BOLD, color=Colors.RED))
             for error_line in errors.splitlines():
                 logging.error(error_line)
-                log.controls.append(Text(error_line, color=Colors.RED))
-                log.scroll_to(offset=-1)
-            log.update()
+                log_output.controls.append(Text(error_line, color=Colors.RED))
+                log_output.scroll_to(offset=-1)
+            log_output.update()
         
-        # 後処理
-        if p.returncode == 0:
-            log.controls.append(Text("✅ 正常に終了しました。",color=Colors.GREEN))
-            log.scroll_to(offset=-1)
-            log.update()
-            progressbar.value = 1
-            progressbar.update()
+        # 処理結果の表示
+        if output_thread.join() == 0:
+            log_output.controls.append(Text("✅ 正常に終了しました。", color=Colors.GREEN))
+            log_output.scroll_to(offset=-1)
+            log_output.update()
+            progress_bar.value = 1
+            progress_bar.update()
         else:
-            log.controls.append(Text("❌ エラーが発生しました",color=Colors.RED))
-            log.scroll_to(offset=-1)
-            log.update()
-            progressbar.value = 0
-            progressbar.update()
+            log_output.controls.append(Text("❌ エラーが発生しました", color=Colors.RED))
+            log_output.scroll_to(offset=-1)
+            log_output.update()
+            progress_bar.value = 0
+            progress_bar.update()
 
-        runbtn.disabled = False
-        runbtn.text = "実行"
-        runbtn.icon = Icons.PLAY_ARROW
-        runbtn.update()
+        # UIの状態を元に戻す
+        download_button.disabled = False
+        download_button.text = "実行"
+        download_button.icon = Icons.PLAY_ARROW
+        download_button.update()
         download_process = None
 
-    # 保存先選択のファイルピッカーの用意
-    def select_outputpath(e:FilePickerResultEvent):
-        nonlocal outputpath
-        outputpath = os.path.normpath(e.path if e.path else outputpath) + os.path.sep
-        # print(outputpath)
-        outputpathfield.value = outputpath
-        outputpathfield.update()
+    def handle_output_directory_select(e: FilePickerResultEvent):
+        """
+        保存先ディレクトリの選択処理
+        Args:
+            e (FilePickerResultEvent): ファイルピッカーの結果イベント
+        """
+        nonlocal download_directory
+        download_directory = os.path.normpath(e.path if e.path else download_directory) + os.path.sep
+        output_directory_field.value = download_directory
+        output_directory_field.update()
     
-    # Cookie選択のファイルピッカーの用意
-    def select_cookiefile(e: FilePickerResultEvent):
-        nonlocal cookie_filepath
+    def handle_cookie_file_select(e: FilePickerResultEvent):
+        """
+        Cookieファイルの選択処理
+        Args:
+            e (FilePickerResultEvent): ファイルピッカーの結果イベント
+        """
+        nonlocal cookie_file_path
         if e.files:
-            cookie_filepath = os.path.normpath(e.files[0].path)
-        cookiefilepathfield.value = cookie_filepath if cookie_filepath else ""
-        cookiefilepathfield.update()
+            cookie_file_path = os.path.normpath(e.files[0].path)
+        cookie_file_field.value = cookie_file_path if cookie_file_path else ""
+        cookie_file_field.update()
     
-    # ファイルピッカーの定義
-    select_outputpath_dialog = FilePicker(on_result=select_outputpath)
-    select_cookiefile_dialog = FilePicker(on_result=select_cookiefile)
-    page.overlay.append(select_outputpath_dialog)
-    page.overlay.append(select_cookiefile_dialog)
+    # ファイルピッカーの初期化
+    output_directory_picker = FilePicker(on_result=handle_output_directory_select)
+    cookie_file_picker = FilePicker(on_result=handle_cookie_file_select)
+    page.overlay.append(output_directory_picker)
+    page.overlay.append(cookie_file_picker)
     
-    # UI要素の定義
-    urlinput = TextField(label="URL", prefix_icon=Icons.LINK, hint_text="https://youtube.com/watch?v=...", expand=True)
-    pastebtn = IconButton(icon=Icons.PASTE, on_click=paste_url,tooltip="クリップボードから貼り付け")
-    outputpathfield = TextField(value=outputpath, label="保存先", expand=True, read_only=True,prefix_icon=Icons.FOLDER)
-    select_outputpath_btn = IconButton(icon=Icons.FOLDER_OPEN,tooltip="保存先を選択",on_click=lambda _:select_outputpath_dialog.get_directory_path(dialog_title="保存先を選択",initial_directory=os.path.expanduser("~")))
-    cookiefrom = Dropdown(label="Cookie取得元",options=[dropdown.Option(key="none",text="なし"),dropdown.Option(key="file",text="ファイル"),dropdown.Option(key="firefox",text="Firefox")],value="none",on_change=change_cookiefrom)
-    cookiefilepathfield = TextField(label="Cookieファイル(.txt)",expand=True,read_only=True,prefix_icon=Icons.COOKIE)
-    select_cookiefile_btn = IconButton(icon=Icons.FILE_OPEN,on_click=lambda _:select_cookiefile_dialog.pick_files(dialog_title="Cookieファイルを選択",allow_multiple=False,allowed_extensions=["txt"]),tooltip="Cookieファイルを選択")
-    cookies = Row([cookiefilepathfield,select_cookiefile_btn],visible=False)
-    log = Column(controls=[Text("📃 ここにログが表示されます",weight=FontWeight.BOLD)], scroll=ScrollMode.AUTO, spacing=2, height=float("inf"), width=float("inf"), expand=True)
-    extdropdown = Dropdown(label="拡張子",options=exts,value=exts[0].key,expand=True,on_change=change_ext,tooltip="保存するファイルの拡張子を選択します")
-    qualitydropdown = Dropdown(label="品質",options=video_quality,value=video_quality[0].key,expand=True,tooltip="一部の拡張子の品質を選択します\n自動の場合は自動で選択された品質でダウンロードします")
-    multiconnect = TextField(value=3, label="同時接続数(0~16)", tooltip=f"同時接続数を指定します\n0の場合は無効化します", on_change=check_multiconnect)
-    is_playlist = Checkbox(label="プレイリストモード", tooltip="プレイリストをダウンロードする際に使うと便利です")
-    is_thumbnail = Checkbox(label="サムネイルを埋め込む", tooltip="サムネイルを埋め込みます", on_change=toggle_crop_thumbnail)
-    is_cropthumbnail = Checkbox(label="サムネイルをクロッピング", tooltip="サムネイルを1:1にクロッピングします\n有効にするには\"サムネイルを埋め込む\"を有効にしてください", disabled=True)
-    is_chapter = Checkbox(label="チャプターを埋め込む",tooltip=f"動画にチャプターを埋め込みます\nデフォルトで詳細なメタデータを埋め込むため場合によってはデフォルトで埋め込まれる場合があります")
-    runbtn = ElevatedButton(text="実行", icon=Icons.PLAY_ARROW, on_click=run_dlp, width=float("inf"))
-    progressbar = ProgressBar(value=0,border_radius=border_radius.all(8))
+    # UIコンポーネントの定義
+    url_input = TextField(label="URL", prefix_icon=Icons.LINK, hint_text="https://youtube.com/watch?v=...", expand=True)
+    paste_button = IconButton(icon=Icons.PASTE, on_click=handle_url_paste, tooltip="クリップボードから貼り付け")
+    output_directory_field = TextField(value=download_directory, label="保存先", expand=True, read_only=True, prefix_icon=Icons.FOLDER)
+    select_directory_button = IconButton(icon=Icons.FOLDER_OPEN, tooltip="保存先を選択", on_click=lambda _: output_directory_picker.get_directory_path(dialog_title="保存先を選択", initial_directory=os.path.expanduser("~")))
+    cookie_source_dropdown = Dropdown(label="Cookie取得元", options=[dropdown.Option(key="none", text="なし"), dropdown.Option(key="file", text="ファイル"), dropdown.Option(key="firefox", text="Firefox")], value="none", on_change=handle_cookie_source_change)
+    cookie_file_field = TextField(label="Cookieファイル(.txt)", expand=True, read_only=True, prefix_icon=Icons.COOKIE)
+    select_cookie_button = IconButton(icon=Icons.FILE_OPEN, on_click=lambda _: cookie_file_picker.pick_files(dialog_title="Cookieファイルを選択", allow_multiple=False, allowed_extensions=["txt"]), tooltip="Cookieファイルを選択")
+    cookie_file_row = Row([cookie_file_field, select_cookie_button], visible=False)
+    log_output = Column(controls=[Text("📃 ここにログが表示されます", weight=FontWeight.BOLD)], scroll=ScrollMode.AUTO, spacing=2, height=float("inf"), width=float("inf"), expand=True)
+    format_dropdown = Dropdown(label="拡張子", options=file_format_options, value=file_format_options[0].key, expand=True, on_change=handle_format_change, tooltip="保存するファイルの拡張子を選択します")
+    quality_dropdown = Dropdown(label="品質", options=video_quality_options, value=video_quality_options[0].key, expand=True, tooltip="一部の拡張子の品質を選択します\n自動の場合は自動で選択された品質でダウンロードします")
+    concurrent_connections_input = TextField(value=3, label="同時接続数(0~16)", tooltip="同時接続数を指定します\n0の場合は無効化します", on_change=validate_concurrent_connections)
+    playlist_checkbox = Checkbox(label="プレイリストモード", tooltip="プレイリストをダウンロードする際に使うと便利です")
+    thumbnail_checkbox = Checkbox(label="サムネイルを埋め込む", tooltip="サムネイルを埋め込みます", on_change=handle_thumbnail_crop_toggle)
+    thumbnail_crop_checkbox = Checkbox(label="サムネイルをクロッピング", tooltip="サムネイルを1:1にクロッピングします\n有効にするには\"サムネイルを埋め込む\"を有効にしてください", disabled=True)
+    chapter_checkbox = Checkbox(label="チャプターを埋め込む", tooltip="動画にチャプターを埋め込みます\nデフォルトで詳細なメタデータを埋め込むため場合によってはデフォルトで埋め込まれる場合があります")
+    download_button = ElevatedButton(text="実行", icon=Icons.PLAY_ARROW, on_click=lambda e: asyncio.run(execute_download(e)), width=float("inf"))
+    progress_bar = ProgressBar(value=0, border_radius=border_radius.all(8))
 
-    # 左パネル(設定など)
-    left_panel = Column(
+    # 左パネル（設定パネル）のレイアウト
+    settings_panel = Column(
         controls=[
-            Row([Text(page.title, size=24, weight=FontWeight.BOLD),Text("Dev",color=Colors.BLACK45,size=12)]),
-            Row([urlinput, pastebtn]),
-            Row([outputpathfield, select_outputpath_btn]),
-            cookiefrom,
-            cookies,
-            Row([extdropdown, qualitydropdown]),
-            multiconnect,
-            is_chapter,
-            is_playlist,
-            is_thumbnail,
-            is_cropthumbnail,
-            progressbar,
-            runbtn
+            Row([Text(page.title, size=24, weight=FontWeight.BOLD), Text("Dev", color=Colors.BLACK45, size=12)]),
+            Row([url_input, paste_button]),
+            Row([output_directory_field, select_directory_button]),
+            cookie_source_dropdown,
+            cookie_file_row,
+            Row([format_dropdown, quality_dropdown]),
+            concurrent_connections_input,
+            chapter_checkbox,
+            playlist_checkbox,
+            thumbnail_checkbox,
+            thumbnail_crop_checkbox,
+            progress_bar,
+            download_button
         ],
         spacing=18,
         width=400,
@@ -331,9 +418,9 @@ def main(page:Page):
         height=float("inf"),
     )
 
-    # 右パネル
-    right_panel = Container(
-        content=log,
+    # 右パネル（ログ表示）のレイアウト
+    log_panel = Container(
+        content=log_output,
         border=border.all(1),
         border_radius=border_radius.all(8),
         padding=8,
@@ -341,17 +428,17 @@ def main(page:Page):
         height=float("inf")
     )
 
-    # 最終的なレイアウト
+    # メインレイアウトの設定
     page.add(
         Row(
             [
-                left_panel,
-                right_panel
+                settings_panel,
+                log_panel
             ],
             spacing=20,
             expand=True
         )
     )
 
-# アプリの実行
+# アプリケーションの起動
 app(target=main)
