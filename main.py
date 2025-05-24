@@ -15,6 +15,7 @@ os.makedirs('./logs', exist_ok=True)
 
 # 設定ファイルのパス
 SETTINGS_FILE = "settings.json"
+VERSION = "1.0.0"
 
 def load_settings():
     """
@@ -46,7 +47,7 @@ def main(page: Page):
         page (Page): Fletのページオブジェクト
     """
     # ウィンドウの基本設定
-    page.title = "NeCd"
+    page.title = f"NeCd"
     page.padding = 20
     page.window.min_width = 800
     page.window.width = 1200
@@ -507,7 +508,7 @@ def main(page: Page):
     # 左パネル（設定パネル）のレイアウト
     settings_panel = Column(
         controls=[
-            Row([Text(page.title, size=24, weight=FontWeight.BOLD), Text("Dev", color=Colors.BLACK45, size=12)]),
+            Row([Text(page.title, size=24, weight=FontWeight.BOLD), Text(f"v{VERSION}", color=Colors.BLACK45, size=12)]),
             Row([url_input, paste_button]),
             Row([output_directory_field, select_directory_button]),
             cookie_source_dropdown,
