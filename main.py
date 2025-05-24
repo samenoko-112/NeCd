@@ -8,9 +8,36 @@ import subprocess
 import asyncio
 import threading
 from queue import Queue
+import json
 
 # ログディレクトリの作成
 os.makedirs('./logs', exist_ok=True)
+
+# 設定ファイルのパス
+SETTINGS_FILE = "settings.json"
+
+def load_settings():
+    """
+    設定ファイルから設定を読み込む
+    Returns:
+        dict: 設定データ
+    """
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except:
+            return {}
+    return {}
+
+def save_settings(settings):
+    """
+    設定をファイルに保存
+    Args:
+        settings (dict): 保存する設定データ
+    """
+    with open(SETTINGS_FILE, 'w', encoding='utf-8') as f:
+        json.dump(settings, f, ensure_ascii=False, indent=4)
 
 def main(page: Page):
     """
@@ -22,16 +49,19 @@ def main(page: Page):
     page.title = "NeCd"
     page.padding = 20
     page.window.min_width = 800
-    page.window.width = 1000
+    page.window.width = 1200
     page.window.min_height = 700
     page.window.height = 800
     page.window.center()
     root_dir = os.path.dirname(os.path.abspath(__file__))
     page.window.icon = root_dir + "/icon.ico"
 
+    # 設定の読み込み
+    settings = load_settings()
+    
     # グローバル変数の初期化
-    download_directory = os.path.normpath(os.path.join(os.path.expanduser("~"), "yt-dlp")) + os.path.sep
-    cookie_file_path = None
+    download_directory = settings.get('download_directory', os.path.normpath(os.path.join(os.path.expanduser("~"), "yt-dlp")) + os.path.sep)
+    cookie_file_path = settings.get('cookie_file_path', None)
     download_process = None
 
     # ドロップダウンの選択肢設定
@@ -355,6 +385,10 @@ def main(page: Page):
         download_directory = os.path.normpath(e.path if e.path else download_directory) + os.path.sep
         output_directory_field.value = download_directory
         output_directory_field.update()
+        
+        # 設定の保存
+        settings['download_directory'] = download_directory
+        save_settings(settings)
     
     def handle_cookie_file_select(e: FilePickerResultEvent):
         """
@@ -367,7 +401,32 @@ def main(page: Page):
             cookie_file_path = os.path.normpath(e.files[0].path)
         cookie_file_field.value = cookie_file_path if cookie_file_path else ""
         cookie_file_field.update()
-    
+        
+        # 設定の保存
+        settings['cookie_file_path'] = cookie_file_path
+        save_settings(settings)
+
+    def handle_settings_change(e):
+        """
+        設定変更時の処理
+        Args:
+            e: イベントオブジェクト
+        """
+        # 現在の設定を保存
+        current_settings = {
+            'download_directory': download_directory,
+            'cookie_file_path': cookie_file_path,
+            'format': format_dropdown.value,
+            'quality': quality_dropdown.value,
+            'concurrent_connections': concurrent_connections_input.value,
+            'playlist_mode': playlist_checkbox.value,
+            'thumbnail_embed': thumbnail_checkbox.value,
+            'thumbnail_crop': thumbnail_crop_checkbox.value,
+            'chapter_embed': chapter_checkbox.value,
+            'cookie_source': cookie_source_dropdown.value
+        }
+        save_settings(current_settings)
+
     # ファイルピッカーの初期化
     output_directory_picker = FilePicker(on_result=handle_output_directory_select)
     cookie_file_picker = FilePicker(on_result=handle_cookie_file_select)
@@ -379,18 +438,69 @@ def main(page: Page):
     paste_button = IconButton(icon=Icons.PASTE, on_click=handle_url_paste, tooltip="クリップボードから貼り付け")
     output_directory_field = TextField(value=download_directory, label="保存先", expand=True, read_only=True, prefix_icon=Icons.FOLDER)
     select_directory_button = IconButton(icon=Icons.FOLDER_OPEN, tooltip="保存先を選択", on_click=lambda _: output_directory_picker.get_directory_path(dialog_title="保存先を選択", initial_directory=os.path.expanduser("~")))
-    cookie_source_dropdown = Dropdown(label="Cookie取得元", options=[dropdown.Option(key="none", text="なし"), dropdown.Option(key="file", text="ファイル"), dropdown.Option(key="firefox", text="Firefox")], value="none", on_change=handle_cookie_source_change)
-    cookie_file_field = TextField(label="Cookieファイル(.txt)", expand=True, read_only=True, prefix_icon=Icons.COOKIE)
+    cookie_source_dropdown = Dropdown(
+        label="Cookie取得元",
+        options=[dropdown.Option(key="none", text="なし"), dropdown.Option(key="file", text="ファイル"), dropdown.Option(key="firefox", text="Firefox")],
+        value=settings.get('cookie_source', 'none'),
+        on_change=lambda e: [handle_cookie_source_change(e), handle_settings_change(e)]
+    )
+    cookie_file_field = TextField(
+        label="Cookieファイル(.txt)",
+        value=cookie_file_path if cookie_file_path else "",
+        expand=True,
+        read_only=True,
+        prefix_icon=Icons.COOKIE
+    )
     select_cookie_button = IconButton(icon=Icons.FILE_OPEN, on_click=lambda _: cookie_file_picker.pick_files(dialog_title="Cookieファイルを選択", allow_multiple=False, allowed_extensions=["txt"]), tooltip="Cookieファイルを選択")
-    cookie_file_row = Row([cookie_file_field, select_cookie_button], visible=False)
+    cookie_file_row = Row([cookie_file_field, select_cookie_button], visible=cookie_source_dropdown.value == "file")
     log_output = Column(controls=[Text("📃 ここにログが表示されます", weight=FontWeight.BOLD)], scroll=ScrollMode.AUTO, spacing=2, height=float("inf"), width=float("inf"), expand=True)
-    format_dropdown = Dropdown(label="拡張子", options=file_format_options, value=file_format_options[0].key, expand=True, on_change=handle_format_change, tooltip="保存するファイルの拡張子を選択します")
-    quality_dropdown = Dropdown(label="品質", options=video_quality_options, value=video_quality_options[0].key, expand=True, tooltip="一部の拡張子の品質を選択します\n自動の場合は自動で選択された品質でダウンロードします")
-    concurrent_connections_input = TextField(value=3, label="同時接続数(0~16)", tooltip="同時接続数を指定します\n0の場合は無効化します", on_change=validate_concurrent_connections)
-    playlist_checkbox = Checkbox(label="プレイリストモード", tooltip="プレイリストをダウンロードする際に使うと便利です")
-    thumbnail_checkbox = Checkbox(label="サムネイルを埋め込む", tooltip="サムネイルを埋め込みます", on_change=handle_thumbnail_crop_toggle)
-    thumbnail_crop_checkbox = Checkbox(label="サムネイルをクロッピング", tooltip="サムネイルを1:1にクロッピングします\n有効にするには\"サムネイルを埋め込む\"を有効にしてください", disabled=True)
-    chapter_checkbox = Checkbox(label="チャプターを埋め込む", tooltip="動画にチャプターを埋め込みます\nデフォルトで詳細なメタデータを埋め込むため場合によってはデフォルトで埋め込まれる場合があります")
+    format_dropdown = Dropdown(
+        label="拡張子",
+        options=file_format_options,
+        value=settings.get('format', file_format_options[0].key),
+        expand=True,
+        on_change=lambda e: [handle_format_change(e), handle_settings_change(e)],
+        tooltip="保存するファイルの拡張子を選択します"
+    )
+    quality_dropdown = Dropdown(
+        label="品質",
+        options=video_quality_options,
+        value=settings.get('quality', video_quality_options[0].key),
+        expand=True,
+        on_change=handle_settings_change,
+        tooltip="一部の拡張子の品質を選択します\n自動の場合は自動で選択された品質でダウンロードします"
+    )
+    concurrent_connections_input = TextField(
+        value=settings.get('concurrent_connections', "3"),
+        label="同時接続数(0~16)",
+        tooltip="同時接続数を指定します\n0の場合は無効化します",
+        on_change=lambda e: [validate_concurrent_connections(e), handle_settings_change(e)]
+    )
+    playlist_checkbox = Checkbox(
+        label="プレイリストモード",
+        value=settings.get('playlist_mode', False),
+        on_change=handle_settings_change,
+        tooltip="プレイリストをダウンロードする際に使うと便利です"
+    )
+    thumbnail_checkbox = Checkbox(
+        label="サムネイルを埋め込む",
+        value=settings.get('thumbnail_embed', False),
+        on_change=lambda e: [handle_thumbnail_crop_toggle(e), handle_settings_change(e)],
+        tooltip="サムネイルを埋め込みます"
+    )
+    thumbnail_crop_checkbox = Checkbox(
+        label="サムネイルをクロッピング",
+        value=settings.get('thumbnail_crop', False),
+        disabled=not thumbnail_checkbox.value,
+        on_change=handle_settings_change,
+        tooltip="サムネイルを1:1にクロッピングします\n有効にするには\"サムネイルを埋め込む\"を有効にしてください"
+    )
+    chapter_checkbox = Checkbox(
+        label="チャプターを埋め込む",
+        value=settings.get('chapter_embed', False),
+        on_change=handle_settings_change,
+        tooltip="動画にチャプターを埋め込みます\nデフォルトで詳細なメタデータを埋め込むため場合によってはデフォルトで埋め込まれる場合があります"
+    )
     download_button = ElevatedButton(text="実行", icon=Icons.PLAY_ARROW, on_click=lambda e: asyncio.run(execute_download(e)), width=float("inf"))
     progress_bar = ProgressBar(value=0, border_radius=border_radius.all(8))
 

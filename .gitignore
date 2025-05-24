@@ -15,3 +15,6 @@ logs/
 
 # spec
 *.spec
+
+# settings.json
+settings.json
