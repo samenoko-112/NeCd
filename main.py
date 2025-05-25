@@ -5,8 +5,6 @@ import pyperclip
 import logging
 import datetime
 import subprocess
-import asyncio
-import threading
 from queue import Queue
 import json
 
@@ -15,7 +13,7 @@ os.makedirs('./logs', exist_ok=True)
 
 # 設定ファイルのパス
 SETTINGS_FILE = "settings.json"
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 
 def load_settings():
     """
@@ -178,10 +176,10 @@ def main(page: Page):
         url_input.value = pyperclip.paste()
         url_input.update()
 
-    async def execute_download(e):
+    def execute_download(e):
         """
         動画ダウンロードの実行
-        非同期でダウンロードを実行し、進捗状況を表示
+        ダウンロードを実行し、進捗状況を表示
         Args:
             e: イベントオブジェクト
         """
@@ -294,87 +292,81 @@ def main(page: Page):
         ])
         log_output.update()
 
-        # 出力キューとエラーキューの初期化
-        output_queue = Queue()
-        error_queue = Queue()
+        try:
+            # プロセスの実行
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1,
+                universal_newlines=True
+            )
+            download_process = process
 
-        def process_download_output():
-            """
-            ダウンロードプロセスの実行と出力の収集
-            Returns:
-                int: プロセスの終了コード
-            """
-            p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, universal_newlines=True)
-            download_process = p
-
+            # 出力の処理
             while True:
-                output = p.stdout.readline()
-                if output == "" and p.poll() is not None:
+                output = process.stdout.readline()
+                if output == "" and process.poll() is not None:
                     break
+                
                 if output:
-                    output_queue.put(output)
+                    output = output.strip()
+                    if "[DOWNLOADING]" in output:
+                        progress = output.split(":")[1].strip()
+                        progress_bar.value = float(progress.strip("%")) / 100
+                        progress_bar.update()
+                    else:
+                        log_output.controls.append(Text(output))
+                        log_output.scroll_to(offset=-1)
+                        log_output.update()
+                        progress_bar.value = None
+                        progress_bar.update()
+                        logging.info(output)
 
-            errors = p.stderr.read()
-            if errors:
-                error_queue.put(errors)
+            # エラー出力の収集
+            errors = process.stderr.read()
             
-            return p.returncode
+            # プロセスの終了を待機
+            return_code = process.wait()
 
-        # 出力処理スレッドの開始
-        output_thread = threading.Thread(target=process_download_output)
-        output_thread.start()
-
-        # 出力の処理と表示
-        while output_thread.is_alive() or not output_queue.empty():
-            try:
-                output = output_queue.get_nowait()
-                if "[DOWNLOADING]" in output:
-                    progress = output.split(":")[1].strip()
-                    progress_bar.value = float(progress.strip("%")) / 100
-                    progress_bar.update()
-                else:
-                    log_output.controls.append(Text(output.strip()))
+            # エラー出力の表示
+            if errors:
+                log_output.controls.append(Text("❌ 発生したエラー:", weight=FontWeight.BOLD, color=Colors.RED))
+                for error_line in errors.splitlines():
+                    logging.error(error_line)
+                    log_output.controls.append(Text(error_line, color=Colors.RED))
                     log_output.scroll_to(offset=-1)
-                    log_output.update()
-                    progress_bar.value = None
-                    progress_bar.update()
-                    logging.info(output.strip())
-            except:
-                await asyncio.sleep(0.1)
+                log_output.update()
 
-        # エラー出力の収集と表示
-        errors = ""
-        while not error_queue.empty():
-            errors += error_queue.get()
-        
-        if errors:
-            log_output.controls.append(Text("❌ 発生したエラー:", weight=FontWeight.BOLD, color=Colors.RED))
-            for error_line in errors.splitlines():
-                logging.error(error_line)
-                log_output.controls.append(Text(error_line, color=Colors.RED))
+            # 処理結果の表示
+            if return_code == 0 and not errors:
+                log_output.controls.append(Text("✅ 正常に終了しました。", color=Colors.GREEN))
                 log_output.scroll_to(offset=-1)
-            log_output.update()
-        
-        # 処理結果の表示
-        if output_thread.join() == 0:
-            log_output.controls.append(Text("✅ 正常に終了しました。", color=Colors.GREEN))
-            log_output.scroll_to(offset=-1)
-            log_output.update()
-            progress_bar.value = 1
-            progress_bar.update()
-        else:
-            log_output.controls.append(Text("❌ エラーが発生しました", color=Colors.RED))
+                log_output.update()
+                progress_bar.value = 1
+                progress_bar.update()
+            else:
+                log_output.controls.append(Text("❌ エラーが発生しました", color=Colors.RED))
+                log_output.scroll_to(offset=-1)
+                log_output.update()
+                progress_bar.value = 0
+                progress_bar.update()
+
+        except Exception as e:
+            log_output.controls.append(Text(f"❌ 予期せぬエラーが発生しました: {str(e)}", color=Colors.RED))
             log_output.scroll_to(offset=-1)
             log_output.update()
             progress_bar.value = 0
             progress_bar.update()
 
-        # UIの状態を元に戻す
-        download_button.disabled = False
-        download_button.text = "実行"
-        download_button.icon = Icons.PLAY_ARROW
-        download_button.update()
-        download_process = None
+        finally:
+            # UIの状態を元に戻す
+            download_button.disabled = False
+            download_button.text = "実行"
+            download_button.icon = Icons.PLAY_ARROW
+            download_button.update()
+            download_process = None
 
     def handle_output_directory_select(e: FilePickerResultEvent):
         """
@@ -502,7 +494,7 @@ def main(page: Page):
         on_change=handle_settings_change,
         tooltip="動画にチャプターを埋め込みます\nデフォルトで詳細なメタデータを埋め込むため場合によってはデフォルトで埋め込まれる場合があります"
     )
-    download_button = ElevatedButton(text="実行", icon=Icons.PLAY_ARROW, on_click=lambda e: asyncio.run(execute_download(e)), width=float("inf"))
+    download_button = ElevatedButton(text="実行", icon=Icons.PLAY_ARROW, on_click=execute_download, width=float("inf"))
     progress_bar = ProgressBar(value=0, border_radius=border_radius.all(8))
 
     # 左パネル（設定パネル）のレイアウト
