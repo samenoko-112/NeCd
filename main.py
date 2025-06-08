@@ -13,7 +13,7 @@ os.makedirs('./logs', exist_ok=True)
 
 # 設定ファイルのパス
 SETTINGS_FILE = "settings.json"
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 
 def load_settings():
     """
@@ -238,15 +238,27 @@ def main(page: Page):
         if format_dropdown.value == "mp4":
             command.extend(["--merge-output-format", "mp4"])
             if quality_dropdown.value != "auto":
-                command.extend(["-f", f"bestvideo[height<={quality_dropdown.value}]+bestaudio[ext=m4a]/best[height<={quality_dropdown.value}]"])
+                if compatibility_checkbox.value:
+                    command.extend(["-f", f"bestvideo[height<={quality_dropdown.value}][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<={quality_dropdown.value}][vcodec^=avc1]/best[height<={quality_dropdown.value}]"])
+                else:
+                    command.extend(["-f", f"bestvideo[height<={quality_dropdown.value}]+bestaudio[ext=m4a]/best[height<={quality_dropdown.value}]"])
             else:
-                command.extend(["-f", "bestvideo+bestaudio[ext=m4a]/best"])
+                if compatibility_checkbox.value:
+                    command.extend(["-f", "bestvideo[vcodec^=avc1]+bestaudio[ext=m4a]/best[vcodec^=avc1]/best"])
+                else:
+                    command.extend(["-f", "bestvideo+bestaudio[ext=m4a]/best"])
         elif format_dropdown.value == "mkv":
             command.extend(["--merge-output-format", "mkv"])
             if quality_dropdown.value != "auto":
-                command.extend(["-f", f"bestvideo[height<={quality_dropdown.value}]+bestaudio[ext=m4a]/best[height<={quality_dropdown.value}]"])
+                if compatibility_checkbox.value:
+                    command.extend(["-f", f"bestvideo[height<={quality_dropdown.value}][vcodec^=avc1]+bestaudio[ext=m4a]/best[height<={quality_dropdown.value}][vcodec^=avc1]/best[height<={quality_dropdown.value}]"])
+                else:
+                    command.extend(["-f", f"bestvideo[height<={quality_dropdown.value}]+bestaudio[ext=m4a]/best[height<={quality_dropdown.value}]"])
             else:
-                command.extend(["-f", "bestvideo+bestaudio[ext=m4a]/best"])
+                if compatibility_checkbox.value:
+                    command.extend(["-f", "bestvideo[vcodec^=avc1]+bestaudio[ext=m4a]/best[vcodec^=avc1]/best"])
+                else:
+                    command.extend(["-f", "bestvideo+bestaudio[ext=m4a]/best"])
         elif format_dropdown.value == "mp3":
             command.extend(["-f", "bestaudio", "-x", "--audio-format", "mp3"])
             if quality_dropdown.value != "auto":
@@ -416,7 +428,8 @@ def main(page: Page):
             'thumbnail_embed': thumbnail_checkbox.value,
             'thumbnail_crop': thumbnail_crop_checkbox.value,
             'chapter_embed': chapter_checkbox.value,
-            'cookie_source': cookie_source_dropdown.value
+            'cookie_source': cookie_source_dropdown.value,
+            'compatibility_mode': compatibility_checkbox.value
         }
         save_settings(current_settings)
 
@@ -427,10 +440,10 @@ def main(page: Page):
     page.overlay.append(cookie_file_picker)
     
     # UIコンポーネントの定義
-    url_input = TextField(label="URL", prefix_icon=Icons.LINK, hint_text="https://youtube.com/watch?v=...", expand=True)
+    url_input = TextField(label="ダウンロード対象のURL", prefix_icon=Icons.LINK, hint_text="https://youtube.com/watch?v=...", expand=True, autofocus=True)
     paste_button = IconButton(icon=Icons.PASTE, on_click=handle_url_paste, tooltip="クリップボードから貼り付け")
-    output_directory_field = TextField(value=download_directory, label="保存先", expand=True, read_only=True, prefix_icon=Icons.FOLDER)
-    select_directory_button = IconButton(icon=Icons.FOLDER_OPEN, tooltip="保存先を選択", on_click=lambda _: output_directory_picker.get_directory_path(dialog_title="保存先を選択", initial_directory=os.path.expanduser("~")))
+    output_directory_field = TextField(value=download_directory, label="保存先フォルダ", expand=True, read_only=True, prefix_icon=Icons.FOLDER)
+    select_directory_button = TextButton(text="フォルダ選択", icon=Icons.FOLDER_OPEN, on_click=lambda _: output_directory_picker.get_directory_path(dialog_title="保存先を選択", initial_directory=os.path.expanduser("~")))
     cookie_source_dropdown = Dropdown(
         label="Cookie取得元",
         options=[dropdown.Option(key="none", text="なし"), dropdown.Option(key="file", text="ファイル"), dropdown.Option(key="firefox", text="Firefox")],
@@ -444,11 +457,11 @@ def main(page: Page):
         read_only=True,
         prefix_icon=Icons.COOKIE
     )
-    select_cookie_button = IconButton(icon=Icons.FILE_OPEN, on_click=lambda _: cookie_file_picker.pick_files(dialog_title="Cookieファイルを選択", allow_multiple=False, allowed_extensions=["txt"]), tooltip="Cookieファイルを選択")
-    cookie_file_row = Row([cookie_file_field, select_cookie_button], visible=cookie_source_dropdown.value == "file")
-    log_output = Column(controls=[Text("📃 ここにログが表示されます", weight=FontWeight.BOLD)], scroll=ScrollMode.AUTO, spacing=2, height=float("inf"), width=float("inf"), expand=True)
+    select_cookie_button = TextButton(text="ファイル選択", icon=Icons.FILE_OPEN, on_click=lambda _: cookie_file_picker.pick_files(dialog_title="Cookieファイルを選択", allow_multiple=False, allowed_extensions=["txt"]), tooltip="Cookieファイルを選択")
+    cookie_file_row = Row([cookie_file_field, select_cookie_button], visible=cookie_source_dropdown.value == "file", alignment=MainAxisAlignment.START)
+    log_output = Column(controls=[Text("📃 ダウンロードログ", weight=FontWeight.BOLD, size=16), Divider(), Text("ここにログが表示されます", weight=FontWeight.BOLD)], scroll=ScrollMode.AUTO, spacing=2, height=float("inf"), width=float("inf"), expand=True)
     format_dropdown = Dropdown(
-        label="拡張子",
+        label="保存する拡張子",
         options=file_format_options,
         value=settings.get('format', file_format_options[0].key),
         expand=True,
@@ -465,7 +478,7 @@ def main(page: Page):
     )
     concurrent_connections_input = TextField(
         value=settings.get('concurrent_connections', "3"),
-        label="同時接続数(0~16)",
+        label="同時接続数 (0~16)",
         tooltip="同時接続数を指定します\n0の場合は無効化します",
         on_change=lambda e: [validate_concurrent_connections(e), handle_settings_change(e)]
     )
@@ -494,41 +507,57 @@ def main(page: Page):
         on_change=handle_settings_change,
         tooltip="動画にチャプターを埋め込みます\nデフォルトで詳細なメタデータを埋め込むため場合によってはデフォルトで埋め込まれる場合があります"
     )
-    download_button = ElevatedButton(text="実行", icon=Icons.PLAY_ARROW, on_click=execute_download, width=float("inf"))
+    compatibility_checkbox = Checkbox(
+        label="互換性重視",
+        value=settings.get('compatibility_mode', False),
+        on_change=handle_settings_change,
+        tooltip="より広い互換性を持つH.264などを優先します\nAV1の代わりにVP9やH.264などを優先します"
+    )
+    download_button = ElevatedButton(text="▶ 実行", icon=Icons.PLAY_ARROW, on_click=execute_download, width=float("inf"), style=ButtonStyle(bgcolor=Colors.BLUE, color=Colors.WHITE, padding=padding.symmetric(vertical=16)))
     progress_bar = ProgressBar(value=0, border_radius=border_radius.all(8))
 
     # 左パネル（設定パネル）のレイアウト
     settings_panel = Column(
         controls=[
-            Row([Text(page.title, size=24, weight=FontWeight.BOLD), Text(f"v{VERSION}", color=Colors.BLACK45, size=12)]),
-            Row([url_input, paste_button]),
+            Row([Text(page.title, size=28, weight=FontWeight.BOLD), Text(f"v{VERSION}", color=Colors.BLACK45, size=12)]),
+            Divider(),
+            url_input,
+            Row([paste_button]),
             Row([output_directory_field, select_directory_button]),
             cookie_source_dropdown,
             cookie_file_row,
-            Row([format_dropdown, quality_dropdown]),
+            format_dropdown,
+            quality_dropdown,
             concurrent_connections_input,
-            chapter_checkbox,
-            playlist_checkbox,
-            thumbnail_checkbox,
-            thumbnail_crop_checkbox,
+            Column([
+                Text("オプション", weight=FontWeight.BOLD, size=15),
+                chapter_checkbox,
+                playlist_checkbox,
+                thumbnail_checkbox,
+                thumbnail_crop_checkbox,
+                compatibility_checkbox,
+                Text("互換性重視: より広い互換性を持つH.264などを優先します", size=11, color=Colors.BLACK54, visible=True)
+            ], spacing=2),
             progress_bar,
             download_button
         ],
-        spacing=18,
-        width=400,
+        spacing=14,
+        width=420,
         scroll=ScrollMode.AUTO,
         alignment=MainAxisAlignment.START,
         height=float("inf"),
+        horizontal_alignment=CrossAxisAlignment.START
     )
 
     # 右パネル（ログ表示）のレイアウト
     log_panel = Container(
         content=log_output,
-        border=border.all(1),
-        border_radius=border_radius.all(8),
-        padding=8,
+        border=border.all(2, Colors.BLUE_200),
+        border_radius=border_radius.all(10),
+        padding=12,
         expand=True,
-        height=float("inf")
+        height=float("inf"),
+        bgcolor=Colors.WHITE
     )
 
     # メインレイアウトの設定
@@ -538,7 +567,7 @@ def main(page: Page):
                 settings_panel,
                 log_panel
             ],
-            spacing=20,
+            spacing=24,
             expand=True
         )
     )

@@ -18,3 +18,6 @@ logs/
 
 # settings.json
 settings.json
+
+*.build
+*.dist
