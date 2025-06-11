@@ -13,7 +13,7 @@ os.makedirs('./logs', exist_ok=True)
 
 # 設定ファイルのパス
 SETTINGS_FILE = "settings.json"
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 def load_settings():
     """
@@ -46,7 +46,7 @@ def main(page: Page):
     """
     # ウィンドウの基本設定
     page.title = f"NeCd"
-    page.padding = 20
+    page.padding = 12
     page.window.min_width = 800
     page.window.width = 1200
     page.window.min_height = 700
@@ -513,21 +513,18 @@ def main(page: Page):
         on_change=handle_settings_change,
         tooltip="より広い互換性を持つH.264などを優先します\nAV1の代わりにVP9やH.264などを優先します"
     )
-    download_button = ElevatedButton(text="▶ 実行", icon=Icons.PLAY_ARROW, on_click=execute_download, width=float("inf"), style=ButtonStyle(bgcolor=Colors.BLUE, color=Colors.WHITE, padding=padding.symmetric(vertical=16)))
+    download_button = ElevatedButton(text="実行", icon=Icons.PLAY_ARROW, on_click=execute_download, width=float("inf"), style=ButtonStyle(bgcolor=Colors.BLUE, color=Colors.WHITE, padding=padding.symmetric(vertical=16)))
     progress_bar = ProgressBar(value=0, border_radius=border_radius.all(8))
 
     # 左パネル（設定パネル）のレイアウト
     settings_panel = Column(
         controls=[
             Row([Text(page.title, size=28, weight=FontWeight.BOLD), Text(f"v{VERSION}", color=Colors.BLACK45, size=12)]),
-            Divider(),
-            url_input,
-            Row([paste_button]),
+            Row([url_input,paste_button]),
             Row([output_directory_field, select_directory_button]),
+            Row([format_dropdown, quality_dropdown]),
             cookie_source_dropdown,
             cookie_file_row,
-            format_dropdown,
-            quality_dropdown,
             concurrent_connections_input,
             Column([
                 Text("オプション", weight=FontWeight.BOLD, size=15),
@@ -567,7 +564,7 @@ def main(page: Page):
                 settings_panel,
                 log_panel
             ],
-            spacing=24,
+            spacing=12,
             expand=True
         )
     )
