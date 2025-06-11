@@ -268,6 +268,9 @@ def main(page: Page):
         else:
             command.extend(["-f", "bestaudio", "-x", "--audio-format", format_dropdown.value, "--audio-quality", "0"])
 
+        if hdr_checkbox.value:
+            command.extend(["--format-sort", "hdr,res,codec,ext,size"])
+        
         # 追加オプションの設定
         if chapter_checkbox.value:
             command.extend(["--embed-chapters", "--add-chapters"])
@@ -429,7 +432,8 @@ def main(page: Page):
             'thumbnail_crop': thumbnail_crop_checkbox.value,
             'chapter_embed': chapter_checkbox.value,
             'cookie_source': cookie_source_dropdown.value,
-            'compatibility_mode': compatibility_checkbox.value
+            'compatibility_mode': compatibility_checkbox.value,
+            'hdr_mode': hdr_checkbox.value
         }
         save_settings(current_settings)
 
@@ -513,6 +517,12 @@ def main(page: Page):
         on_change=handle_settings_change,
         tooltip="より広い互換性を持つH.264などを優先します\nAV1の代わりにVP9やH.264などを優先します"
     )
+    hdr_checkbox = Checkbox(
+        label="HDRを優先する",
+        value=settings.get('hdr_mode', False),
+        on_change=handle_settings_change,
+        tooltip="HDRを優先します\nHDRを優先する場合は\"互換性重視\"を無効にしてください"
+    )
     download_button = ElevatedButton(text="実行", icon=Icons.PLAY_ARROW, on_click=execute_download, width=float("inf"), style=ButtonStyle(bgcolor=Colors.BLUE, color=Colors.WHITE, padding=padding.symmetric(vertical=16)))
     progress_bar = ProgressBar(value=0, border_radius=border_radius.all(8))
 
@@ -533,7 +543,7 @@ def main(page: Page):
                 thumbnail_checkbox,
                 thumbnail_crop_checkbox,
                 compatibility_checkbox,
-                Text("互換性重視: より広い互換性を持つH.264などを優先します", size=11, color=Colors.BLACK54, visible=True)
+                hdr_checkbox
             ], spacing=2),
             progress_bar,
             download_button
