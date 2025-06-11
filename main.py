@@ -13,7 +13,7 @@ os.makedirs('./logs', exist_ok=True)
 
 # 設定ファイルのパス
 SETTINGS_FILE = "settings.json"
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 
 def load_settings():
     """
